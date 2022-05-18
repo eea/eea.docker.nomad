@@ -1,0 +1,61 @@
+
+version: '2'
+
+services:
+  consul:
+    restart: always
+    image: consul:1.12.0
+    ports:
+      - '8300:8300'
+      - '8500:8500'
+      - '8400:8400'
+      - '8301:8301/tcp'
+      - '8301:8301/udp'
+      - '8302:8302/udp'
+      - '8302:8302/tcp'
+      - '8600:8600'
+    network_mode: "host"
+    volumes:
+#    - /opt/consul:/opt/consul
+    - nfsvolume:/opt
+    environment:
+      CONSULSERVER1: "dns_name_1"
+      CONSULSERVER2: "dns_name_2"
+      CONSULSERVER3: "dns_name_3"
+      DATADIR: "/tmp"
+      ENCRYPTION_KEY: "something_very_secret_for_consul"
+    container_name: consul
+    command: /bin/sh -c 'consul agent -node=ci -advertise=`hostname -i` -config-dir=/opt/consul/config/client -data-dir=$${DATADIR} -node=`hostname` -join=$${CONSULSERVER1} -join=$${CONSULSERVER2} -join=$${CONSULSERVER3} -encrypt=$${ENCRYPTION_KEY}'
+
+  nomad:
+    image: eeacms/nomad:1.3.0
+    container_name: nomad
+    restart: always
+    privileged: true
+    #enable for server
+    ports:
+      - '4649:4649'
+      - '4647:4647'
+      - '4648:4648'
+      - '4646:4646'
+    network_mode: "host"
+    depends_on:
+      - consul
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - nfsvolume:/opt
+    environment:
+      DATADIR: "/tmp"
+      DATACENTER: "dc1"
+      ENCRYPTION_KEY: "something_very_secret_for_nomad"
+    command:
+      /bin/sh -c 'nomad agent -config=/opt/nomad/config/client.hcl -data-dir=$${DATADIR} -dc=$${DATACENTER} -encrypt=$${ENCRYPTION_KEY} -acl-enabled'
+
+#for simplicity all configuration files are in a nfs share       
+volumes:
+  nfsvolume:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr=dns_name,port=2049,rw,nfsvers=4,async
+      device: ":/"
